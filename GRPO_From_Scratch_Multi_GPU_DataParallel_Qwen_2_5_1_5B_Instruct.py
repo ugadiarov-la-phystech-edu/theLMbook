@@ -265,7 +265,7 @@ def evaluate_model(model, tokenizer, eval_examples, device, verbose=True):
            print("-"*50)
 
        pbar.update(1)
-       pbar.set_postfix({'accuracy': correct / i})
+       pbar.set_postfix({'accuracy': correct / (i + 1)})
 
    # Calculate and print final accuracy
    accuracy = (correct / total) * 100
