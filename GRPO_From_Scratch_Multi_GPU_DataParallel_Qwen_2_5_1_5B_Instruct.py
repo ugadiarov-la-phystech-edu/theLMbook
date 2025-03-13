@@ -1054,7 +1054,7 @@ def test_model(wandb_project, wandb_run_name, saved_model_path=None, pretrained_
 
     eval_data = prepare_dataset("test")
 
-    accuracy = evaluate_model(model, tokenizer, eval_data, device)
+    accuracy = evaluate_model(model, tokenizer, eval_data, device, verbose=False)
     print(f"Model: {saved_model_path or pretrained_model_name}. Accuracy: {accuracy:.2f}%")
     wandb.init(project=wandb_project, name=wandb_run_name)
     wandb.log({'accuracy': accuracy})
