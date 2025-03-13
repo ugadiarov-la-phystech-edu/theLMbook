@@ -7,6 +7,7 @@ import re
 import os
 import numpy as np
 import wandb
+from tqdm import tqdm
 
 # PyTorch and related libraries for deep learning
 import torch
@@ -206,7 +207,7 @@ def extract_single_number(text):
    numbers = re.findall(r'-?\d*\.?\d+', text)
    return float(numbers[0]) if len(numbers) == 1 else None
 
-def evaluate_model(model, tokenizer, eval_examples, device):
+def evaluate_model(model, tokenizer, eval_examples, device, verbose=True):
    """
    Evaluates the model on a set of examples and prints detailed results.
 
@@ -239,7 +240,8 @@ def evaluate_model(model, tokenizer, eval_examples, device):
    print("EVALUATION ON", total, "EXAMPLES")
    print("="*50)
 
-   for example in eval_examples:
+   pbar = tqdm(total=total)
+   for i, example in enumerate(eval_examples):
        # Get the prompt and expected answer
        full_prompt = example["prompt"]
        expected = example["answer"]
@@ -283,23 +285,27 @@ def evaluate_model(model, tokenizer, eval_examples, device):
            if is_correct:
                correct += 1
 
-           # Print evaluation details
-           print("\nPrompt:")
-           print(full_prompt)
-           print("\nExpected Answer:")
-           print(expected)
-           print("\nExtracted Answer:")
-           print(predicted)
-           print("\nFull Generated Response:")
-           print(response)
-           print("\nCorrect:", "✓" if is_correct else "✗")
-           print("-"*50)
+           if verbose:
+               # Print evaluation details
+               print("\nPrompt:")
+               print(full_prompt)
+               print("\nExpected Answer:")
+               print(expected)
+               print("\nExtracted Answer:")
+               print(predicted)
+               print("\nFull Generated Response:")
+               print(response)
+               print("\nCorrect:", "✓" if is_correct else "✗")
+               print("-"*50)
 
        except Exception as e:
            print("\nFailed to parse model output for prompt:")
            print(full_prompt)
            print("Error:", e)
            print("-"*50)
+
+       pbar.update(1)
+       pbar.set_postfix({'accuracy': correct / i})
 
    # Calculate and print final accuracy
    accuracy = (correct / total) * 100
@@ -1000,7 +1006,7 @@ def train_model(wandb_project, wandb_run_name):
     model.save_pretrained("grpo_finetuned_model")
     tokenizer.save_pretrained("grpo_finetuned_model")
 
-def test_model():
+def test_model(wandb_project, wandb_run_name, saved_model_path=None, pretrained_model_name=None,):
     """
     Main function to load the fine-tuned model and test it on example math problems.
 
@@ -1016,81 +1022,55 @@ def test_model():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
-    # Load the saved model and tokenizer
-    saved_model_path = "grpo_finetuned_model"
+    if saved_model_path is not None:
+        # Load the saved model and tokenizer
+        saved_model_path = "grpo_finetuned_model"
 
 
-    # Load the model
-    loaded_model = AutoModelForCausalLM.from_pretrained(
-        saved_model_path,
-        torch_dtype=torch.bfloat16,
-        device_map="auto"
-    )
+        # Load the model
+        model = AutoModelForCausalLM.from_pretrained(
+            saved_model_path,
+            torch_dtype=torch.bfloat16,
+            device_map="auto"
+        )
 
+        tokenizer = AutoTokenizer.from_pretrained(saved_model_path)
+    elif pretrained_model_name is not None:
+        print("Downloading model...")
+        model = AutoModelForCausalLM.from_pretrained(
+            pretrained_model_name,
+            torch_dtype=torch.bfloat16,
+            device_map="auto"
+        )
+        print("Model downloaded")
 
-    loaded_tokenizer = AutoTokenizer.from_pretrained(saved_model_path)
-    loaded_tokenizer.pad_token = loaded_tokenizer.eos_token
+        tokenizer = AutoTokenizer.from_pretrained(pretrained_model_name, padding_side="left")
 
-    # Define test prompts
-    prompts_to_test = [
-        "How much is 1+1?",
-        "I have 3 apples, my friend eats one and I give 2 to my sister, how many apples do I have now?",
-        "Solve the equation 6x + 4 = 40"
-    ]
+    tokenizer.pad_token = tokenizer.eos_token
+    model.config.pad_token_id = tokenizer.eos_token_id
+    model.config.eos_token_id = tokenizer.eos_token_id
 
-    # Test each prompt
-    for prompt in prompts_to_test:
-        # Prepare the prompt using the same format as during training
-        test_messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": prompt}
-        ]
-        test_prompt = build_prompt(test_messages)
+    eval_data = prepare_dataset("test")
 
-        # Tokenize the prompt and generate a response
-        test_input_ids = loaded_tokenizer.encode(test_prompt, return_tensors="pt").to(device)
-
-        # Generate response with similar parameters to those used in training
-        with torch.no_grad():
-            test_output_ids = loaded_model.generate(
-                test_input_ids,
-                max_new_tokens=400,
-                temperature=0.7,
-                num_return_sequences=1,
-                pad_token_id=loaded_tokenizer.pad_token_id,
-                eos_token_id=loaded_tokenizer.eos_token_id,
-                do_sample=True,
-                early_stopping=False
-            )
-
-        test_response = loaded_tokenizer.decode(test_output_ids[0], skip_special_tokens=True)
-
-        # Print the test prompt and the model's response
-        print("\nTest Prompt:")
-        print(test_prompt)
-        print("\nModel Response:")
-        print(test_response)
-
-        # Extract and display the answer part for easier evaluation
-        try:
-            extracted_answer = extract_answer_from_model_output(test_response)
-            print("\nExtracted Answer:")
-            print(extracted_answer)
-            print("-" * 50)
-        except Exception as e:
-            print(f"\nFailed to extract answer: {e}")
-            print("-" * 50)
+    accuracy = evaluate_model(model, tokenizer, eval_data, device)
+    print(f"Model: {saved_model_path or pretrained_model_name}. Accuracy: {accuracy:.2f}%")
+    wandb.init(project=wandb_project, name=wandb_run_name)
+    wandb.log({'accuracy': accuracy})
+    wandb.finish()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--mode', choices=['train', 'test'], required=True)
     parser.add_argument('--wandb_project', type=str, required=True)
     parser.add_argument('--wandb_run_name', type=str, required=True)
+    parser.add_argument('--saved_model_path', type=str, required=False)
+    parser.add_argument('--pretrained_model_name', type=str, required=False)
     args = parser.parse_args()
 
     if args.mode == 'train':
         train_model(wandb_project=args.wandb_project, wandb_run_name=args.wandb_run_name)
     elif args.mode == 'test':
-        test_model()
+        test_model(wandb_project=args.wandb_project, wandb_run_name=args.wandb_run_name,
+                   saved_model_path=args.saved_model_path, pretrained_model_name=args.pretrained_model_name)
     else:
         raise ValueError(f'Invalid mode: {args.mode}')
