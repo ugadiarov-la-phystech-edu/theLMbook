@@ -952,7 +952,7 @@ def train_model(wandb_project, wandb_run_name):
 
     all_data = prepare_dataset("train")
     random.shuffle(all_data)
-    size_of_eval_data = 30 # change to a smaller value to save time or to a larger number for a more reliable estimate
+    size_of_eval_data = 1 # change to a smaller value to save time or to a larger number for a more reliable estimate
     eval_data = all_data[:size_of_eval_data]
     train_data = all_data[size_of_eval_data:]
 
@@ -967,7 +967,7 @@ def train_model(wandb_project, wandb_run_name):
     training_config = {
         'num_iterations': 1,
         'num_steps': 500,
-        'batch_size': num_gpus - 1, # reduce if you have fewer GPUs
+        'batch_size': 2 * num_gpus, # reduce if you have fewer GPUs
         'num_generations': 12, # reduce if you have GPUs with less VRAM
         'max_completion_length': 400, # reduce if you have GPUs with less VRAM
         'beta': 0.04,
