@@ -1045,6 +1045,8 @@ def test_model(wandb_project, wandb_run_name, saved_model_path=None, pretrained_
         print("Model downloaded")
 
         tokenizer = AutoTokenizer.from_pretrained(pretrained_model_name, padding_side="left")
+    else:
+        raise ValueError(f'saved_model_path={saved_model_path} pretrained_model_name={pretrained_model_name}')
 
     tokenizer.pad_token = tokenizer.eos_token
     model.config.pad_token_id = tokenizer.eos_token_id
