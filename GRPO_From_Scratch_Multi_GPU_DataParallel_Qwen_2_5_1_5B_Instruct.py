@@ -973,7 +973,7 @@ def train_model(wandb_project, wandb_run_name):
     training_config = {
         'num_iterations': 1,
         'num_steps': 500,
-        'batch_size': 2 * num_gpus, # reduce if you have fewer GPUs
+        'batch_size': num_gpus, # reduce if you have fewer GPUs
         'num_generations': 12, # reduce if you have GPUs with less VRAM
         'max_completion_length': 400, # reduce if you have GPUs with less VRAM
         'beta': 0.04,
